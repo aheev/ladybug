@@ -11,7 +11,7 @@
   <a href="https://github.com/LadybugDB/ladybug/actions">
     <img src="https://github.com/LadybugDB/ladybug/actions/workflows/ci-workflow.yml/badge.svg?branch=master" alt="Github Actions Badge"></a>
   <a href="https://discord.com/invite/hXyHmvW3Vy">
-    <img src="https://img.shields.io/discord/1196510116388806837?logo=discord" alt="discord" /></a>
+    <img src="https://img.shields.io/discord/1162999022819225631?logo=discord" alt="discord" /></a>
   <a href="https://twitter.com/lbugdb">
     <img src="https://img.shields.io/badge/follow-@lbugdb-1DA1F2?logo=twitter" alt="twitter"></a>
 </p>
