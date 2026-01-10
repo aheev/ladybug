@@ -1,1 +1,1 @@
-COPY tableOfTypes FROM "dataset/copy-test/node/csv/types_50k.csv";
+COPY tableOfTypes FROM "types_50k.csv";

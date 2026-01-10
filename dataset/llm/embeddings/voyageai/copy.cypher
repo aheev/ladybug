@@ -1,1 +1,1 @@
-COPY embedding FROM "dataset/llm/embeddings/voyageai/embeddings.csv";
+COPY embedding FROM "embeddings.csv";

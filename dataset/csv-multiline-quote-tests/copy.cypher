@@ -1,2 +1,2 @@
-COPY basic FROM "dataset/csv-multiline-quote-tests/basic.csv" (PARALLEL=FALSE);
-COPY `mixed-newlines` FROM "dataset/csv-multiline-quote-tests/mixed-newlines.csv" (PARALLEL=FALSE);
+COPY basic FROM "basic.csv" (PARALLEL=FALSE);
+COPY `mixed-newlines` FROM "mixed-newlines.csv" (PARALLEL=FALSE);

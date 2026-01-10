@@ -1,1 +1,1 @@
-COPY person FROM "dataset/large-array/large_array.parquet";
+COPY person FROM "large_array.parquet";

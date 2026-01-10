@@ -1,1 +1,1 @@
-COPY person FROM "dataset/copy-dos-style-newline/vPerson.csv"
+COPY person FROM "vPerson.csv"

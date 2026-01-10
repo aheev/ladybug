@@ -1,1 +1,1 @@
-COPY embedding FROM "dataset/llm/embeddings/googlegemini/embeddings.csv";
+COPY embedding FROM "embeddings.csv";

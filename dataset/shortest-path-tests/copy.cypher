@@ -1,2 +1,2 @@
-COPY person FROM "dataset/shortest-path-tests/vPerson.csv";
-COPY knows FROM "dataset/shortest-path-tests/eKnows.csv";
+COPY person FROM "vPerson.csv";
+COPY knows FROM "eKnows.csv";
