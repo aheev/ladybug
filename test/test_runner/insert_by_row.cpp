@@ -23,8 +23,8 @@ static std::unique_ptr<main::QueryResult> validateQuery(main::Connection& conn,
 }
 
 void InsertDatasetByRow::init() {
-    auto copyFile = "dataset/" + datasetPath + "/" + TestHelper::COPY_FILE_NAME;
-    copyFile = TestHelper::appendLbugRootPath(copyFile);
+    std::string datasetFullPath = TestHelper::appendLbugRootPath("dataset/" + datasetPath + "/"); ;
+    std::string copyFile = datasetFullPath + TestHelper::COPY_FILE_NAME;
     std::ifstream file(copyFile);
     if (!file.is_open()) {
         throw TestException(std::format("Error opening file: {}, errno: {}.", copyFile, errno));
@@ -54,11 +54,8 @@ void InsertDatasetByRow::init() {
         if (start == std::string::npos || end == std::string::npos) {
             throw TestException(std::format("Invalid file from copy {}.", line));
         }
-        std::string filePath = line.substr(start + 1, end - start - 1);
-        auto fullPath = TestHelper::appendLbugRootPath(filePath);
-        line.replace(line.find(filePath), filePath.length(), fullPath);
-        end = line.find(';');
-        auto datasetFilePath = line.substr(start, end == std::string::npos ? end : end - start);
+        std::string fileName = line.substr(start + 1, end - start - 1);
+        auto datasetFilePath = "\"" + datasetFullPath + fileName + "\"";
         if (tableType == "NODE") {
             tables.push_back(std::make_unique<NodeTableInfo>(std::move(tableName),
                 std::move(datasetFilePath), std::move(properties)));
