@@ -23,7 +23,8 @@ static std::unique_ptr<main::QueryResult> validateQuery(main::Connection& conn,
 }
 
 void InsertDatasetByRow::init() {
-    std::string datasetFullPath = TestHelper::appendLbugRootPath("dataset/" + datasetPath + "/"); ;
+    std::string datasetFullPath = TestHelper::appendLbugRootPath("dataset/" + datasetPath + "/");
+    ;
     std::string copyFile = datasetFullPath + TestHelper::COPY_FILE_NAME;
     std::ifstream file(copyFile);
     if (!file.is_open()) {
