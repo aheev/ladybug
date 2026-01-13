@@ -1,1 +1,1 @@
-COPY Book from "dataset/fts-basic/Book.csv";
+COPY Book from "Book.csv";

@@ -1,1 +1,1 @@
-COPY embedding FROM "dataset/llm/embeddings/openai/embeddings.csv";
+COPY embedding FROM "embeddings.csv";

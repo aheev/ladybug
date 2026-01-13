@@ -1,1 +1,1 @@
-COPY person FROM "dataset/order-by-tests/vPerson.csv"
+COPY person FROM "vPerson.csv"

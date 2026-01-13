@@ -1,1 +1,1 @@
-COPY tensor FROM "dataset/tensor-list/vTensor.csv";
+COPY tensor FROM "vTensor.csv";

@@ -1,1 +1,1 @@
-COPY embedding FROM "dataset/llm/embeddings/googlevertex/embeddings.csv";
+COPY embedding FROM "embeddings.csv";

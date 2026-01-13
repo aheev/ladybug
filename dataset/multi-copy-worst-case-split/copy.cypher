@@ -1,2 +1,2 @@
-COPY Test From "dataset/multi-copy-worst-case-split/collisions.csv"
-COPY Test From "dataset/multi-copy-worst-case-split/values-to-force-split.csv"
+COPY Test From "collisions.csv"
+COPY Test From "values-to-force-split.csv"

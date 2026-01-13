@@ -1,2 +1,2 @@
-COPY `nodes` (`id`) FROM "dataset/snap/lastFM/nodes.csv" ;
-COPY `edges` FROM "dataset/snap/lastFM/edges.csv" ;
+COPY `nodes` (`id`) FROM "nodes.csv" ;
+COPY `edges` FROM "edges.csv" ;

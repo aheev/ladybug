@@ -1,1 +1,1 @@
-COPY embedding FROM "dataset/llm/embeddings/amazonbedrock/embeddings.csv";
+COPY embedding FROM "embeddings.csv";
