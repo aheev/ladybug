@@ -28,18 +28,32 @@ std::string GoogleGeminiEmbedding::getPath(const std::string& model) const {
 }
 
 httplib::Headers GoogleGeminiEmbedding::getHeaders(const std::string& /*model*/,
-    const nlohmann::json& /*payload*/) const {
+    const JsonMutDoc& /*payload*/) const {
     return httplib::Headers{{"Content-Type", "application/json"}};
 }
 
-nlohmann::json GoogleGeminiEmbedding::getPayload(const std::string& model,
+JsonMutDoc GoogleGeminiEmbedding::getPayload(const std::string& model,
     const std::string& text) const {
-    return nlohmann::json{{"model", "models/" + model},
-        {"content", {{"parts", {{{"text", text}}}}}}};
+    JsonMutDoc doc;
+    auto root = doc.addRoot();
+    root.addStr(doc.doc_, "model", ("models/" + model).c_str());
+    auto contentObj = root.addObj(doc.doc_, "content");
+    auto partsArr = contentObj.addArr(doc.doc_, "parts");
+    auto partObj = partsArr.addObj(doc.doc_, "");
+    partObj.addStr(doc.doc_, "text", text.c_str());
+    return doc;
 }
 
 std::vector<float> GoogleGeminiEmbedding::parseResponse(const httplib::Result& res) const {
-    return nlohmann::json::parse(res->body)["embedding"]["values"].get<std::vector<float>>();
+    auto doc = parseJson(res->body);
+    auto root = doc.getRoot();
+    auto embeddingObj = root.getObjKey("embedding");
+    auto valuesArr = embeddingObj.getObjKey("values");
+    std::vector<float> result;
+    for (size_t i = 0; i < valuesArr.getArrSize(); i++) {
+        result.push_back(valuesArr.getArr(i).getReal());
+    }
+    return result;
 }
 
 void GoogleGeminiEmbedding::configure(const std::optional<uint64_t>& dimensions,

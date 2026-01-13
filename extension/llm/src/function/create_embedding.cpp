@@ -6,7 +6,6 @@
 #include "function/llm_functions.h"
 #include "function/scalar_function.h"
 #include "httplib.h"
-#include "json.hpp"
 #include "main/client_context.h"
 #include "providers/amazon-bedrock.h"
 #include "providers/google-gemini.h"
@@ -15,6 +14,7 @@
 #include "providers/open-ai.h"
 #include "providers/provider.h"
 #include "providers/voyage-ai.h"
+#include <format>
 
 using namespace lbug::common;
 using namespace lbug::binder;
@@ -81,9 +81,9 @@ static void execFunc(const std::vector<std::shared_ptr<common::ValueVector>>& pa
     result.resetAuxiliaryBuffer();
     for (auto selectedPos = 0u; selectedPos < resultSelVector->getSelSize(); ++selectedPos) {
         auto text = parameters[0]->getValue<ku_string_t>(selectedPos).getAsString();
-        nlohmann::json payload = provider->getPayload(model, text);
+        JsonMutDoc payload = provider->getPayload(model, text);
         httplib::Headers headers = provider->getHeaders(model, payload);
-        auto res = client.Post(path, headers, payload.dump(), "application/json");
+        auto res = client.Post(path, headers, payload.toString(), "application/json");
         if (!res) {
             throw ConnectionException("Request failed: Could not connect to server <" +
                                       provider->getClient() + "> \n" +
@@ -107,9 +107,8 @@ static void execFunc(const std::vector<std::shared_ptr<common::ValueVector>>& pa
 
 void validateValAsPositive(int64_t val) {
     if (val <= 0) {
-        throw(BinderException(
-            common::stringFormat("Dimensions should be greater than 0. Got: {}.\n{}", val,
-                std::string(EmbeddingProvider::referenceLbugDocs))));
+        throw(BinderException(std::format("Dimensions should be greater than 0. Got: {}.\n{}", val,
+            std::string(EmbeddingProvider::referenceLbugDocs))));
     }
 }
 

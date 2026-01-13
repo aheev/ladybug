@@ -22,7 +22,7 @@ std::string VoyageAIEmbedding::getPath(const std::string& /*model*/) const {
 }
 
 httplib::Headers VoyageAIEmbedding::getHeaders(const std::string& /*model*/,
-    const nlohmann::json& /*payload*/) const {
+    const JsonMutDoc& /*payload*/) const {
     static const std::string envVar = "VOYAGE_API_KEY";
     auto env_key = main::ClientContext::getEnvVariable(envVar);
     if (env_key.empty()) {
@@ -33,27 +33,38 @@ httplib::Headers VoyageAIEmbedding::getHeaders(const std::string& /*model*/,
         {"Authorization", "Bearer " + env_key}};
 }
 
-nlohmann::json VoyageAIEmbedding::getPayload(const std::string& model,
-    const std::string& text) const {
-    nlohmann::json payload = {{"model", model}, {"input", text}};
+JsonMutDoc VoyageAIEmbedding::getPayload(const std::string& model, const std::string& text) const {
+    JsonMutDoc doc;
+    auto root = doc.addRoot();
+    root.addStr(doc.doc_, "model", model.c_str());
+    root.addStr(doc.doc_, "input", text.c_str());
     if (dimensions.has_value()) {
-        payload["output_dimension"] = dimensions.value();
+        root.addSint(doc.doc_, "output_dimension", dimensions.value());
     }
-    return payload;
+    return doc;
 }
 
 std::vector<float> VoyageAIEmbedding::parseResponse(const httplib::Result& res) const {
-    return nlohmann::json::parse(res->body)["data"][0]["embedding"].get<std::vector<float>>();
+    auto doc = parseJson(res->body);
+    auto root = doc.getRoot();
+    auto dataArr = root.getObjKey("data");
+    auto embeddingArr = dataArr.getArr(0);
+    auto embeddingVal = embeddingArr.getObjKey("embedding");
+    std::vector<float> result;
+    for (size_t i = 0; i < embeddingVal.getArrSize(); i++) {
+        result.push_back(embeddingVal.getArr(i).getReal());
+    }
+    return result;
 }
 
 void VoyageAIEmbedding::configure(const std::optional<uint64_t>& dimensions,
     const std::optional<std::string>& region) {
+    (void)dimensions;
     if (region.has_value()) {
         static const auto functionSignatures = CreateEmbedding::getFunctionSet();
         throw(functionSignatures[0]->signatureToString() + '\n' +
               functionSignatures[2]->signatureToString());
     }
-    this->dimensions = dimensions;
 }
 
 } // namespace llm_extension

@@ -29,7 +29,7 @@ std::string GoogleVertexEmbedding::getPath(const std::string& model) const {
 }
 
 httplib::Headers GoogleVertexEmbedding::getHeaders(const std::string& /*model*/,
-    const nlohmann::json& /*payload*/) const {
+    const JsonMutDoc& /*payload*/) const {
     static const std::string envVar = "GOOGLE_VERTEX_ACCESS_KEY";
     auto env_key = main::ClientContext::getEnvVariable(envVar);
     if (env_key.empty()) {
@@ -40,19 +40,33 @@ httplib::Headers GoogleVertexEmbedding::getHeaders(const std::string& /*model*/,
         {"Authorization", "Bearer " + env_key}};
 }
 
-nlohmann::json GoogleVertexEmbedding::getPayload(const std::string& /*model*/,
+JsonMutDoc GoogleVertexEmbedding::getPayload(const std::string& /*model*/,
     const std::string& text) const {
-    nlohmann::json payload{
-        {"instances", {{{"content", text}, {"task_type", "RETRIEVAL_DOCUMENT"}}}}};
+    JsonMutDoc doc;
+    auto root = doc.addRoot();
+    auto instancesArr = root.addArr(doc.doc_, "instances");
+    auto instanceObj = instancesArr.addObj(doc.doc_, "");
+    instanceObj.addStr(doc.doc_, "content", text.c_str());
+    instanceObj.addStr(doc.doc_, "task_type", "RETRIEVAL_DOCUMENT");
     if (dimensions.has_value()) {
-        payload["parameters"] = {{"outputDimensionality", dimensions.value()}};
+        auto paramsObj = root.addObj(doc.doc_, "parameters");
+        paramsObj.addSint(doc.doc_, "outputDimensionality", dimensions.value());
     }
-    return payload;
+    return doc;
 }
 
 std::vector<float> GoogleVertexEmbedding::parseResponse(const httplib::Result& res) const {
-    return nlohmann::json::parse(res->body)["predictions"][0]["embeddings"]["values"]
-        .get<std::vector<float>>();
+    auto doc = parseJson(res->body);
+    auto root = doc.getRoot();
+    auto predictionsArr = root.getObjKey("predictions");
+    auto pred0 = predictionsArr.getArr(0);
+    auto embeddingsObj = pred0.getObjKey("embeddings");
+    auto valuesArr = embeddingsObj.getObjKey("values");
+    std::vector<float> result;
+    for (size_t i = 0; i < valuesArr.getArrSize(); i++) {
+        result.push_back(valuesArr.getArr(i).getReal());
+    }
+    return result;
 }
 
 void GoogleVertexEmbedding::configure(const std::optional<uint64_t>& dimensions,

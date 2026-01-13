@@ -21,17 +21,27 @@ std::string OllamaEmbedding::getPath(const std::string& /*model*/) const {
 }
 
 httplib::Headers OllamaEmbedding::getHeaders(const std::string& /*model*/,
-    const nlohmann::json& /*payload*/) const {
+    const JsonMutDoc& /*payload*/) const {
     return httplib::Headers{{"Content-Type", "application/json"}};
 }
 
-nlohmann::json OllamaEmbedding::getPayload(const std::string& model,
-    const std::string& text) const {
-    return nlohmann::json{{"model", model}, {"prompt", text}};
+JsonMutDoc OllamaEmbedding::getPayload(const std::string& model, const std::string& text) const {
+    JsonMutDoc doc;
+    auto root = doc.addRoot();
+    root.addStr(doc.doc_, "model", model.c_str());
+    root.addStr(doc.doc_, "prompt", text.c_str());
+    return doc;
 }
 
 std::vector<float> OllamaEmbedding::parseResponse(const httplib::Result& res) const {
-    return nlohmann::json::parse(res->body)["embedding"].get<std::vector<float>>();
+    auto doc = parseJson(res->body);
+    auto root = doc.getRoot();
+    auto embeddingArr = root.getObjKey("embedding");
+    std::vector<float> result;
+    for (size_t i = 0; i < embeddingArr.getArrSize(); i++) {
+        result.push_back(embeddingArr.getArr(i).getReal());
+    }
+    return result;
 }
 
 void OllamaEmbedding::configure(const std::optional<uint64_t>& dimensions,

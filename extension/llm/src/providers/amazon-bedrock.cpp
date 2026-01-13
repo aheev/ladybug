@@ -24,13 +24,8 @@ std::string BedrockEmbedding::getPath(const std::string& model) const {
     return "/model/" + model + "/invoke";
 }
 
-// AWS requests require an authorization signature in the header. This is part
-// of a scheme to validate the request. The body is used to create this
-// signature. This is one of the reasons the same header cannot be used across
-// different requests. Refer to
-// https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html
 httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
-    const nlohmann::json& payload) const {
+    const JsonMutDoc& payload) const {
     static const std::string envVarAWSAccessKey = "AWS_ACCESS_KEY";
     static const std::string envVarAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY";
     auto envAWSAccessKey = main::ClientContext::getEnvVariable(envVarAWSAccessKey);
@@ -46,8 +41,8 @@ httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
         throw(RuntimeException(errMsg + std::string(referenceLbugDocs)));
     }
     std::string service = "bedrock";
-    std::string region = this->region.value_or("");
-    std::string host = "bedrock-runtime." + region + ".amazonaws.com";
+    std::string regionStr = this->region.value_or("");
+    std::string host = "bedrock-runtime." + regionStr + ".amazonaws.com";
 
     auto timestamp = Timestamp::getCurrentTimestamp();
     auto dateHeader = Timestamp::getDateHeader(timestamp);
@@ -67,9 +62,8 @@ httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
         signedHeaders += header.first;
     }
 
-    // For crypto related functionality
     using namespace httpfs_extension;
-    std::string payloadStr = payload.dump();
+    std::string payloadStr = payload.toString();
     hash_bytes payloadHashBytes;
     hash_str payloadHashHex;
     sha256(payloadStr.c_str(), payloadStr.size(), payloadHashBytes);
@@ -89,7 +83,7 @@ httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
     hex256(canonicalRequestHashBytes, canonicalRequestHashHex);
     std::string algorithm = "AWS4-HMAC-SHA256";
     std::string credentialScope =
-        std::string(dateHeader) + "/" + region + "/" + service + "/" + "aws4_request";
+        std::string(dateHeader) + "/" + regionStr + "/" + service + "/" + "aws4_request";
     std::ostringstream stringToSign;
     stringToSign << algorithm << "\n"
                  << datetimeHeader << "\n"
@@ -100,7 +94,7 @@ httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
     hash_bytes kDate, kRegion, kService, kSigning;
     std::string kSecret = "AWS4" + envAWSSecretAccessKey;
     hmac256(dateHeader, kSecret.c_str(), kSecret.size(), kDate);
-    hmac256(region, kDate, kRegion);
+    hmac256(regionStr, kDate, kRegion);
     hmac256(service, kRegion, kService);
     hmac256("aws4_request", kService, kSigning);
     hash_bytes signatureBytes;
@@ -117,13 +111,23 @@ httplib::Headers BedrockEmbedding::getHeaders(const std::string& model,
     return headers;
 }
 
-nlohmann::json BedrockEmbedding::getPayload(const std::string& /*model*/,
+JsonMutDoc BedrockEmbedding::getPayload(const std::string& /*model*/,
     const std::string& text) const {
-    return nlohmann::json{{"inputText", text}};
+    JsonMutDoc doc;
+    auto root = doc.addRoot();
+    root.addStr(doc.doc_, "inputText", text.c_str());
+    return doc;
 }
 
 std::vector<float> BedrockEmbedding::parseResponse(const httplib::Result& res) const {
-    return nlohmann::json::parse(res->body)["embedding"].get<std::vector<float>>();
+    auto doc = parseJson(res->body);
+    auto root = doc.getRoot();
+    auto embeddingVal = root.getObjKey("embedding");
+    std::vector<float> result;
+    for (size_t i = 0; i < embeddingVal.getArrSize(); i++) {
+        result.push_back(embeddingVal.getArr(i).getReal());
+    }
+    return result;
 }
 
 void BedrockEmbedding::configure(const std::optional<uint64_t>& dimensions,

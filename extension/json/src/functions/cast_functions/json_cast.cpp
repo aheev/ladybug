@@ -1,11 +1,11 @@
 #include "common/exception/conversion.h"
 #include "common/json_common.h"
-#include "common/string_format.h"
 #include "function/scalar_function.h"
 #include "json_cast_functions.h"
 #include "json_creation_functions.h"
 #include "json_type.h"
 #include "json_utils.h"
+#include <format>
 
 namespace lbug {
 namespace json_extension {
@@ -26,7 +26,7 @@ static void execFunc(const std::vector<std::shared_ptr<common::ValueVector>>& pa
         if (!doc) {
             yyjson_doc_free(doc);
             throw common::ConversionException{
-                common::stringFormat("Cannot convert {} to JSON.", str.getAsString())};
+                std::format("Cannot convert {} to JSON.", str.getAsString())};
         }
         yyjson_doc_free(doc);
         StringVector::addString(&result, resultPos, str);
@@ -47,11 +47,11 @@ function_set CastToJsonFunction::getFunctionSet() {
     function_set result;
     auto function =
         std::make_unique<ScalarFunction>(name, std::vector<LogicalTypeID>{LogicalTypeID::ANY},
-            LogicalTypeID::STRING, ToJsonFunction::execFunc);
+            LogicalTypeID::JSON, ToJsonFunction::execFunc);
     function->bindFunc = bindFunc;
     result.push_back(function->copy());
     function = std::make_unique<ScalarFunction>(name,
-        std::vector<LogicalTypeID>{LogicalTypeID::STRING}, LogicalTypeID::STRING, execFunc);
+        std::vector<LogicalTypeID>{LogicalTypeID::STRING}, LogicalTypeID::JSON, execFunc);
     result.push_back(std::move(function));
     return result;
 }
