@@ -98,7 +98,15 @@ void TestHelper::executeScript(const std::string& cypherScript, Connection& conn
             storageIndex = end + 1;
         }
         for (auto& storagePath : storagePaths) {
-            auto fullPath = appendLbugRootPath(storagePath);
+            auto fullPath = storagePath;
+            if (std::filesystem::path(storagePath).is_relative()) {
+                if (std::filesystem::path(storagePath).parent_path().empty()) {
+                    fullPath = (cypherDir / storagePath).string();
+                } else {
+                    fullPath = appendLbugRootPath(storagePath);
+                }
+            }
+
             size_t pos = line.find(storagePath);
             if (pos != std::string::npos) {
                 line.replace(pos, storagePath.length(), fullPath);
