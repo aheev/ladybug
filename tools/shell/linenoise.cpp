@@ -2047,7 +2047,7 @@ static void truncateText(char*& buf, size_t& len, size_t pos, size_t cols, size_
         } else {
             highlight_buffer = std::string(buf + startPos, charPos - startPos);
         }
-        strncpy(highlightBuf, highlight_buffer.c_str(), LINENOISE_MAX_LINE - 1);
+        strncpy(highlightBuf, highlight_buffer.c_str(), LINENOISE_MAX_LINE);
         highlightBuf[LINENOISE_MAX_LINE - 1] = '\0';
         len = highlight_buffer.size();
     } else {
