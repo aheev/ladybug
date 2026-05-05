@@ -63,6 +63,10 @@ std::span<uint8_t> MemoryManager::mallocBuffer(bool initializeToZero, uint64_t s
     } else {
         buffer = malloc(size);
     }
+    if (buffer == nullptr) {
+        throw BufferManagerException(
+            "Unable to allocate memory! System out of memory.");
+    }
     return std::span(static_cast<uint8_t*>(buffer), size);
 }
 

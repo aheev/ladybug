@@ -789,6 +789,9 @@ lbug_state lbug_value_get_blob(lbug_value* value, uint8_t** out_result, uint64_t
         auto blob = static_cast<Value*>(value->_value)->getValue<std::string>();
         *out_length = blob.size();
         auto* buffer = (uint8_t*)malloc(sizeof(uint8_t) * blob.size());
+        if (buffer == nullptr) {
+            return LbugError;
+        }
         memcpy(buffer, blob.data(), blob.size());
         *out_result = buffer;
     } catch (Exception& e) {

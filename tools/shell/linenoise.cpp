@@ -517,6 +517,9 @@ int linenoiseHistoryAdd(const char* line) {
             }
         }
         linecopy = (char*)malloc((len + replaced_newline_count + 1) * sizeof(char));
+        if (linecopy == nullptr) {
+            return 0;
+        }
         uint64_t pos = 0;
         for (len = 0; line[len]; len++) {
             if (line[len] == '\r' && line[len + 1] == '\n') {
@@ -2044,7 +2047,8 @@ static void truncateText(char*& buf, size_t& len, size_t pos, size_t cols, size_
         } else {
             highlight_buffer = std::string(buf + startPos, charPos - startPos);
         }
-        std::strcpy(highlightBuf, highlight_buffer.c_str());
+        strncpy(highlightBuf, highlight_buffer.c_str(), LINENOISE_MAX_LINE - 1);
+        highlightBuf[LINENOISE_MAX_LINE - 1] = '\0';
         len = highlight_buffer.size();
     } else {
         // Invalid UTF8: fallback.
