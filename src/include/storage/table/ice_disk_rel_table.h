@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_map>
 
 #include "catalog/catalog_entry/rel_group_catalog_entry.h"
 #include "common/exception/runtime.h"
@@ -20,6 +21,8 @@ public:
     std::unique_ptr<processor::ParquetReader> indicesReader;
     std::unique_ptr<processor::ParquetReaderScanState> parquetScanState;
     std::size_t currentRowGroupIdx = 0;
+    std::size_t nextRowToProcess = 0;
+    std::unordered_map<common::offset_t, common::sel_t> boundNodeOffsetToSelPos;
 
     IceDiskRelTableScanState(MemoryManager& mm, common::ValueVector* nodeIDVector,
         std::vector<common::ValueVector*> outputVectors,
@@ -69,8 +72,9 @@ private:
     void loadIndptrData(transaction::Transaction* transaction);
     void copyCachedBoundNodeSelVector(RelTableScanState& relScanState) const;
     bool scanRowGroupForBoundNodes(transaction::Transaction* transaction,
-    IceDiskRelTableScanState& iceDiskScanState, const std::vector<std::size_t>& rowGroupsToProcess,
-    const std::unordered_set<common::offset_t>& boundNodeOffsets) const;
+        IceDiskRelTableScanState& iceDiskScanState,
+        const std::vector<std::size_t>& rowGroupsToProcess,
+        const std::unordered_map<common::offset_t, common::sel_t>& boundNodeOffsetToSelPos) const;
     std::size_t findSourceNodeForRow(std::size_t globalRowIdx) const;
 
 private:

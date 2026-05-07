@@ -74,45 +74,41 @@ void IceDiskRelTable::initScanState(Transaction* transaction, TableScanState& sc
     auto& iceDiskScanState = static_cast<IceDiskRelTableScanState&>(relScanState);
     iceDiskScanState.initializeIndicesReader(transaction);
     iceDiskScanState.currentRowGroupIdx = 0;
+    iceDiskScanState.nextRowToProcess = 0;
+    iceDiskScanState.boundNodeOffsetToSelPos.clear();
+    for (uint64_t i = 0; i < iceDiskScanState.cachedBoundNodeSelVector.getSelSize(); ++i) {
+        auto boundNodeIdx = iceDiskScanState.cachedBoundNodeSelVector[i];
+        const auto boundNodeID = iceDiskScanState.nodeIDVector->getValue<nodeID_t>(boundNodeIdx);
+        iceDiskScanState.boundNodeOffsetToSelPos.emplace(boundNodeID.offset, boundNodeIdx);
+    }
 }
 
 bool IceDiskRelTable::scanInternal(Transaction* transaction, TableScanState& scanState) {
     auto& iceDiskScanState = static_cast<IceDiskRelTableScanState&>(scanState);
 
     scanState.resetOutVectors();
-
-    // Check if we have any row groups left to process
-    if (iceDiskScanState.currentRowGroupIdx >= indicesRowGroupStartOffsets.size()) {
-        // No more row groups to process
+    if (!iceDiskScanState.indicesReader) {
         auto newSelVector = std::make_shared<SelectionVector>(0);
         iceDiskScanState.outState->setSelVector(newSelVector);
         return false;
     }
 
-    // Process the current row group
-    std::vector<uint64_t> rowGroupsToProcess = {iceDiskScanState.currentRowGroupIdx};
-
-    // Create a set of bound node IDs for fast lookup
-    std::unordered_set<common::offset_t> boundNodeOffsets;
-    for (size_t i = 0; i < iceDiskScanState.cachedBoundNodeSelVector.getSelSize(); ++i) {
-        common::sel_t boundNodeIdx = iceDiskScanState.cachedBoundNodeSelVector[i];
-        const auto boundNodeID = iceDiskScanState.nodeIDVector->getValue<nodeID_t>(boundNodeIdx);
-        boundNodeOffsets.insert(boundNodeID.offset);
+    while (iceDiskScanState.currentRowGroupIdx < indicesRowGroupStartOffsets.size()) {
+        std::vector<uint64_t> rowGroupsToProcess = {iceDiskScanState.currentRowGroupIdx};
+        if (scanRowGroupForBoundNodes(transaction, iceDiskScanState, rowGroupsToProcess,
+                iceDiskScanState.boundNodeOffsetToSelPos)) {
+            return true;
+        }
     }
 
-    // Scan the current row group and collect relationships for bound nodes
-    bool hasData = scanRowGroupForBoundNodes(transaction, iceDiskScanState, rowGroupsToProcess,
-        boundNodeOffsets);
-
-    // Move to next row group for next call
-    iceDiskScanState.currentRowGroupIdx++;
-
-    return hasData;
+    auto newSelVector = std::make_shared<SelectionVector>(0);
+    iceDiskScanState.outState->setSelVector(newSelVector);
+    return false;
 }
 
 bool IceDiskRelTable::scanRowGroupForBoundNodes(Transaction* transaction,
     IceDiskRelTableScanState& iceDiskScanState, const std::vector<std::size_t>& rowGroupsToProcess,
-    const std::unordered_set<common::offset_t>& boundNodeOffsets) const {
+    const std::unordered_map<common::offset_t, common::sel_t>& boundNodeOffsetToSelPos) const {
     if (!iceDiskScanState.indicesReader) {
         return false;
     }
@@ -136,35 +132,38 @@ bool IceDiskRelTable::scanRowGroupForBoundNodes(Transaction* transaction,
         indicesChunk.insert(colIdx, vector);
     }
 
-    // Scan the row groups and collect relationships for bound nodes.
+    // Emit at most one relationship per call so the bound node vector can stay flat and aligned
+    // with the output row, matching the regular and Arrow scan behavior.
     const auto isFwd = iceDiskScanState.direction != RelDataDirection::BWD;
-    uint64_t totalRowsCollected = 0;
     uint64_t currentGlobalRowIdx = 0;
+    uint64_t currentRowIdxInGroup = 0;
 
     // Calculate the starting global row index for the first row group
     if (!rowGroupsToProcess.empty()) {
         currentGlobalRowIdx = indicesRowGroupStartOffsets[rowGroupsToProcess[0]];
     }
 
-    while (totalRowsCollected < IceDiskRelTable::scanRowGroupBatchSize &&
-           iceDiskScanState.indicesReader->scanInternal(*iceDiskScanState.parquetScanState,
-               indicesChunk)) {
+    while (iceDiskScanState.indicesReader->scanInternal(*iceDiskScanState.parquetScanState,
+        indicesChunk)) {
 
         auto selSize = indicesChunk.state->getSelVector().getSelSize();
 
-        for (size_t i = 0; i < selSize && totalRowsCollected < IceDiskRelTable::scanRowGroupBatchSize;
-             ++i, ++currentGlobalRowIdx) {
+        for (size_t i = 0; i < selSize; ++i, ++currentGlobalRowIdx, ++currentRowIdxInGroup) {
+            if (currentRowIdxInGroup < iceDiskScanState.nextRowToProcess) {
+                continue;
+            }
             // Find which source node this row belongs to.
             const auto sourceNodeOffset = findSourceNodeForRow(currentGlobalRowIdx);
 
             // Column 0 in indices file is the destination node offset.
             const auto dstOffset = indicesChunk.getValueVector(0).getValue<std::size_t>(i);
             const auto boundOffset = isFwd ? sourceNodeOffset : dstOffset;
-            
-            // not a bound node, skip
-            if (boundNodeOffsets.find(boundOffset) == boundNodeOffsets.end()) {
+
+            if (!boundNodeOffsetToSelPos.contains(boundOffset)) {
                 continue;
             }
+            const auto boundSelPos = boundNodeOffsetToSelPos.at(boundOffset);
+            iceDiskScanState.setNodeIDVectorToFlat(boundSelPos);
 
             const auto nbrOffset = isFwd ? dstOffset : sourceNodeOffset;
             const auto nbrTableID = isFwd ? getToNodeTableID() : getFromNodeTableID();
@@ -172,34 +171,32 @@ bool IceDiskRelTable::scanRowGroupForBoundNodes(Transaction* transaction,
 
             // outputVectors[0] is the neighbor node ID, if requested.
             if (!iceDiskScanState.outputVectors.empty()) {
-                iceDiskScanState.outputVectors[0]->setValue(totalRowsCollected, nbrNodeID);
+                iceDiskScanState.outputVectors[0]->setValue(0, nbrNodeID);
             }
 
             // If there are additional columns (e.g., weight), copy them to subsequent output
             // vectors These are property columns and should have matching types
             for (uint32_t colIdx = 1;
                  colIdx < numIndicesColumns && colIdx < iceDiskScanState.outputVectors.size();
-                 ++colIdx) {
-                iceDiskScanState.outputVectors[colIdx]->copyFromVectorData(totalRowsCollected,
+                  ++colIdx) {
+                iceDiskScanState.outputVectors[colIdx]->copyFromVectorData(0,
                     &indicesChunk.getValueVector(colIdx), i);
             }
 
-            totalRowsCollected++;
+            auto selVector = std::make_shared<SelectionVector>(1);
+            selVector->setToFiltered(1);
+            (*selVector)[0] = 0;
+            iceDiskScanState.outState->setSelVector(selVector);
+            iceDiskScanState.nextRowToProcess = currentRowIdxInGroup + 1;
+            return true;
         }
     }
 
-    // No data found
-    if (totalRowsCollected <= 0) {
-        auto selVector = std::make_shared<SelectionVector>(0);
-        iceDiskScanState.outState->setSelVector(selVector);
-        return false;
-    }
-
-    auto selVector = std::make_shared<SelectionVector>(totalRowsCollected);
-    selVector->setToUnfiltered(totalRowsCollected);
+    iceDiskScanState.currentRowGroupIdx++;
+    iceDiskScanState.nextRowToProcess = 0;
+    auto selVector = std::make_shared<SelectionVector>(0);
     iceDiskScanState.outState->setSelVector(selVector);
-
-    return true;
+    return false;
 }
 
 common::row_idx_t IceDiskRelTable::getNumTotalRows(const Transaction* transaction) {
