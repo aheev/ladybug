@@ -54,6 +54,22 @@ TEST_F(CApiVersionTest, GetStorageVersion) {
     ASSERT_EQ(storageVersion, actualVersion);
 }
 
+TEST_F(EmptyCApiVersionTest, GetStorageVersionInfoString) {
+    lbug_connection_destroy(&connection);
+    lbug_database_destroy(&_database);
+    auto infoStr = lbug_get_storage_version_info_string();
+    ASSERT_NE(infoStr, nullptr);
+    // Must be a non-empty JSON object
+    std::string info(infoStr);
+    lbug_destroy_string(infoStr);
+    ASSERT_FALSE(info.empty());
+    ASSERT_EQ(info.front(), '{');
+    ASSERT_EQ(info.back(), '}');
+    // Must contain at least the current version and a known historical entry
+    ASSERT_NE(info.find(LBUG_CMAKE_VERSION), std::string::npos);
+    ASSERT_NE(info.find("0.11.0"), std::string::npos);
+}
+
 TEST_F(EmptyCApiVersionTest, GetStorageVersion) {
     auto storageVersion = lbug_get_storage_version();
     if (inMemMode) {

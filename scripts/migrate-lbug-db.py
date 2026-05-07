@@ -17,6 +17,7 @@ Notes:
 - Can only be used to migrate to newer Lbug versions, from 0.11.0 onwards
 """
 
+import json
 import tempfile
 import sys
 import struct
@@ -28,15 +29,17 @@ import os
 # Database file extensions
 LBUG_FILE_EXTENSIONS = ["", ".wal", ".shadow"]
 
-
-# FIXME: Replace this with a Lbug query to get the mapping when available.
-lbug_version_mapping = {
+# Fallback mapping used when the installed lbug version does not yet expose
+# Database.get_storage_version_info().  Maps storage version number to the
+# latest known lbug version string for that storage version.
+_FALLBACK_LBUG_VERSION_MAPPING = {
     34: "0.7.0",
     35: "0.7.1",
     36: "0.8.2",
     37: "0.9.0",
     38: "0.10.1",
     39: "0.11.0",
+    40: "0.16.1",
 }
 
 minimum_lbug_migration_version = "0.11.0"
@@ -52,12 +55,58 @@ def lbug_version_comparison(version: str, target: str) -> bool:
     return current >= target
 
 
-def read_lbug_storage_version(lbug_db_path: str) -> int:
+def query_lbug_version_mapping(py_exe: str) -> dict:
     """
-    Reads the Lbug storage version.
+    Query the lbug version → storage version mapping from an installed lbug package,
+    then invert it to storage version → latest lbug version string.
+
+    Falls back to _FALLBACK_LBUG_VERSION_MAPPING when the installed package does not
+    yet expose Database.get_storage_version_info() (e.g. older published releases).
+    """
+    marker = "__LBUG_VER_INFO__"
+    snippet = f"""
+import lbug, json, sys
+try:
+    info = lbug.Database.get_storage_version_info()
+    print('{marker}' + json.dumps(info))
+except Exception as e:
+    print('{marker}ERROR:' + str(e), file=sys.stderr)
+    sys.exit(1)
+"""
+    proc = subprocess.run([py_exe, "-c", snippet], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(
+            f"Warning: could not query version mapping from installed lbug ({proc.stderr.strip()}); "
+            "using built-in fallback mapping.",
+            file=sys.stderr,
+        )
+        return dict(_FALLBACK_LBUG_VERSION_MAPPING)
+
+    for line in proc.stdout.splitlines():
+        if line.startswith(marker):
+            data = json.loads(line[len(marker) :])  # {version_str: storage_ver}
+            # Build reverse map: {storage_ver: latest_version_str}
+            reverse_map: dict = {}
+            for version_str, storage_ver in data.items():
+                sv = int(storage_ver)
+                if sv not in reverse_map or lbug_version_comparison(version_str, reverse_map[sv]):
+                    reverse_map[sv] = version_str
+            return reverse_map
+
+    print(
+        "Warning: could not parse version mapping from lbug output; using built-in fallback mapping.",
+        file=sys.stderr,
+    )
+    return dict(_FALLBACK_LBUG_VERSION_MAPPING)
+
+
+def read_lbug_storage_version(lbug_db_path: str, version_mapping: dict) -> str:
+    """
+    Reads the Lbug storage version from a database file and maps it to a Lbug version string.
 
     :param lbug_db_path: Path to the Lbug database file/directory.
-    :return: Storage version code as an integer.
+    :param version_mapping: Mapping of storage version int → lbug version string.
+    :return: Lbug version string corresponding to the storage version in the database.
     """
     if os.path.isdir(lbug_db_path):
         lbug_version_file_path = os.path.join(lbug_db_path, "catalog.lbdb")
@@ -76,8 +125,8 @@ def read_lbug_storage_version(lbug_db_path: str) -> int:
             )
         version_code = struct.unpack("<Q", data)[0]
 
-    if version_code in lbug_version_mapping:
-        return lbug_version_mapping[version_code]
+    if version_code in version_mapping:
+        return version_mapping[version_code]
     else:
         raise ValueError(f"Could not map version_code {version_code} to proper Lbug version.")
 
@@ -141,16 +190,6 @@ def lbug_migration(
             f"New version for lbug is not supported, has to be equal or higher than version: {minimum_lbug_migration_version}"
         )
 
-    print(
-        f"Migrating Lbug database from {old_version} to {new_version}", file=sys.stderr
-    )
-    print(f"Source: {old_db}", file=sys.stderr)
-    print("", file=sys.stderr)
-
-    # If version of old lbug db is not provided try to determine it based on file info
-    if not old_version:
-        old_version = read_lbug_storage_version(old_db)
-
     # Check if old database exists
     if not os.path.exists(old_db):
         raise FileNotFoundError(f"Source database '{old_db}' does not exist.")
@@ -165,13 +204,36 @@ def lbug_migration(
             f"File already exists at {new_db}, remove file or change new database file path to continue"
         )
 
+    print(
+        f"Migrating Lbug database from {old_version or '(auto-detect)'} to {new_version}",
+        file=sys.stderr,
+    )
+    print(f"Source: {old_db}", file=sys.stderr)
+    print("", file=sys.stderr)
+
     # Use temp directory for all processing, it will be cleaned up after with statement
     with tempfile.TemporaryDirectory() as export_dir:
-        # Set up environments
-        print(f"Setting up Lbug {old_version} environment...", file=sys.stderr)
-        old_py = ensure_env(old_version, export_dir)
+        # Install new_version first so we can query its storage version mapping
         print(f"Setting up Lbug {new_version} environment...", file=sys.stderr)
         new_py = ensure_env(new_version, export_dir)
+
+        # If the old version is not provided, auto-detect it from the database file using
+        # the storage version mapping exposed by the installed new_version package.
+        if not old_version:
+            version_mapping = query_lbug_version_mapping(new_py)
+            old_version = read_lbug_storage_version(old_db, version_mapping)
+            print(f"Auto-detected old Lbug version: {old_version}", file=sys.stderr)
+
+        if not lbug_version_comparison(
+            version=old_version, target=minimum_lbug_migration_version
+        ):
+            raise ValueError(
+                f"Detected old version {old_version} is not supported; "
+                f"migration requires old version >= {minimum_lbug_migration_version}"
+            )
+
+        print(f"Setting up Lbug {old_version} environment...", file=sys.stderr)
+        old_py = ensure_env(old_version, export_dir)
 
         export_file = os.path.join(export_dir, "lbug_export")
         print(f"Exporting old DB → {export_dir}", file=sys.stderr)

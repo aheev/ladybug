@@ -1626,6 +1626,13 @@ LBUG_C_API char* lbug_get_version();
  */
 LBUG_C_API uint64_t lbug_get_storage_version();
 
+/**
+ * @brief Returns the storage version info as a JSON string mapping Lbug version to storage
+ * version, e.g. `{"0.11.0":39,"0.12.0":40,...}`. The caller is responsible for freeing the
+ * returned string using lbug_destroy_string().
+ */
+LBUG_C_API char* lbug_get_storage_version_info_string();
+
 // Error handling
 /**
  * @brief Returns the last error message set by the C API, consuming it (subsequent calls return
